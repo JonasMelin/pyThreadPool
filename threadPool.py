@@ -32,8 +32,9 @@ class threadPool():
     # ##############################################################
     # Function
     # ##############################################################
-    def __init__(self, maxThreads=22, maxQueueLength = 1):
+    def __init__(self, maxThreads=22, maxQueueLength = 1, verbose=False):
 
+        self.verbose = verbose
         self.lastStatPrintTime = time.time()
         self.maxMeasuredWaitList = 0
         self.abortAll = False
@@ -90,7 +91,8 @@ class threadPool():
             self.maxMeasuredWaitList = unprocessedJobQueue
             print(f"{datetime.datetime.now().isoformat()} Work queueSize with jobs that was not scheduled to a thread just reached new max value: {unprocessedJobQueue} (Max allowed: {self.maxQueueLength})")
 
-        self.printStats()
+        if self.verbose:
+            self.printStats()
 
         if sync:
             # run synchronous. Wait until all jobs are complete.
