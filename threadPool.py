@@ -20,8 +20,10 @@ PRINT_STATS_INTERVAL = 60
 #   tp = threadPool()   # instantiate the threadpool
 #   workList = []       # list of works. add how many you want. Each job will be put on a unique thread, executed in parrallell
 #   job1 = {}           # Create a job to the work list. Add key words: callback and callbackArgs. Your callback function!
-#   job1["callback"] = myCallback
-#   job1["callbackArgs"] = {"arg1" : counter}
+#   job1["callback"] = myCallback  ## Your function that the thread pool shall call
+#   job1["callbackArgs"] = {"arg1" : counter}  ## The arguments the thread pool will pass to myCallback()
+#   job1["completedCallback"] = myCompletedFunction   ## OPTIONAL, if you wantto get a callback when a job completes (returnValue, job)
+#   job1["returnedValue"] = ""   ## OPTIONAL, after a thread completes the return value will be stored here. CANNOT be combined with async call!
 #   workList.append(job1)    # Append the job. You should append more than one to utalize the pool properly ;-)
 #   tp.runMultiThreadJob(workList)   # run the batch job from your work list.
 #                                    # Note! You can use multiple threads to call runMultiThreadJob simultaneously!
@@ -75,6 +77,10 @@ class threadPool():
             if "callbackArgs" not in entry:
                 print(f"{datetime.datetime.now().isoformat()} You must provide a callbackArgs for each job!!")
                 continue
+            if sync is False and "returnedValue" in entry:
+                print(f"{datetime.datetime.now().isoformat()} You cannot provide returnedValue field in async mode. Use \'completedCallback' instead!!")
+                continue
+
             entry["__jobCompleteEvent__"] = threading.Event()
 
             with self.globalLock:
@@ -118,7 +124,7 @@ class threadPool():
 
         with self.globalLock:
             if len(self.threadFreeList) == 0:
-                if len(self.threadList) > self.maxThreads:
+                if len(self.threadList) >= self.maxThreads:
                     return None
                 else:
                     self._createNewThread(len(self.threadList))
@@ -210,7 +216,14 @@ class threadPool():
 
                 # Do the work
                 try:
-                    nextJob["callback"](nextJob["callbackArgs"])
+                    userReturnValue = nextJob["callback"](nextJob["callbackArgs"])
+
+                    if "completedCallback" in nextJob:
+                        nextJob["completedCallback"](userReturnValue, nextJob)
+
+                    if "returnedValue" in nextJob:
+                        nextJob["returnedValue"] = userReturnValue
+
                     nextJob["__jobCompleteEvent__"].set()
                 except Exception as ex:
                     print(f"{datetime.datetime.now().isoformat()} Exception in user callback function: "+str(ex))
@@ -261,9 +274,15 @@ class threadPool():
 # ##############################################################
 terminate = False
 
+## Will be called by a thread in the thread pool
 def myCallback(args):
     print(f"{datetime.datetime.now().isoformat()} CALLBACK CALLED!!" + str(args))
     time.sleep(random.randint(0,10) / 10)
+    return random.randint(0, 1000)
+
+## Will be called by the thread pool when a callback has completed..
+def jobCompletedCallback(returnValue, callbackArgs):
+    print(f"Returned value from threadded function: {returnValue}, {callbackArgs}")
 
 
 def threadFunc(args):
@@ -273,7 +292,6 @@ def threadFunc(args):
         jobsize = random.randint(0,4)
         sync = random.randint(0,1)
 
-
         for a in range(jobsize):
             if terminate:
                 return
@@ -281,6 +299,10 @@ def threadFunc(args):
             job = {}
             job["callback"] = myCallback
             job["callbackArgs"] = {"arg1" : counter}
+            job["completedCallback"] = jobCompletedCallback
+
+            if sync:
+                job["returnedValue"] = ""
 
             counter += 1
             workList.append(job)
