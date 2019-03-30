@@ -27,12 +27,18 @@ PRINT_STATS_INTERVAL = 60
 #   workList.append(job1)    # Append the job. You should append more than one to utalize the pool properly ;-)
 #   tp.runMultiThreadJob(workList)   # run the batch job from your work list.
 #                                    # Note! You can use multiple threads to call runMultiThreadJob simultaneously!
-#                                    # Your thread will be blocked until all jobs have completed according to your worklist
+#                                    # Your thread will be blocked until all jobs have completed according to your worklist,
+#                                    # unless you set sync=False, then you will get returned immediately, but can still get
+#                                    # optinally notified by the provide 'completeCallback' callback
 #
 # ##############################################################
 class threadPool():
     # ##############################################################
-    # Function
+    # Constructor
+    # maxThreads = the maximum possible threads that this pool may use
+    # maxQueueLength = the max job queue length to allow in case of all threads are busy, and you are running
+    # in sync=False mode. If queue is full, you will be blocked even in async mode.
+    # versbose = True means some stats will be printed to stdout every minute
     # ##############################################################
     def __init__(self, maxThreads=22, maxQueueLength = 1, verbose=False):
 
@@ -54,8 +60,7 @@ class threadPool():
     # joblist = list of dictionarys with required following keys:
     #    joblist = [{"callback" : yourCallbackFunction, "callbackArgs" : TheArgsToPassToCallback}]
     # sync = if to run synchronous or async, however, if there are no available threads even with
-    #    sync==False will block until all your jobs are complete, so there will no be a work queue built up
-    #    Mayby should add flag "allowQueue" to also allow that behaviour...
+    #    sync==False will block until all your jobs are complete, if maxQueueLength is reached
     #
     # return value:
     #    The number of jobs from inputted work list that was put in a queue, e.g. there are no available
@@ -217,16 +222,20 @@ class threadPool():
                 # Do the work
                 try:
                     userReturnValue = nextJob["callback"](nextJob["callbackArgs"])
+                except Exception as ex:
+                    print(f"{datetime.datetime.now().isoformat()} Exception in user callback function: {ex}")
+                    userReturnValue = ex
 
+                # Report return code back to user..
+                try:
                     if "completedCallback" in nextJob:
                         nextJob["completedCallback"](userReturnValue, nextJob)
 
-                    if "returnedValue" in nextJob:
-                        nextJob["returnedValue"] = userReturnValue
-
-                    nextJob["__jobCompleteEvent__"].set()
+                    nextJob["returnedValue"] = userReturnValue
                 except Exception as ex:
-                    print(f"{datetime.datetime.now().isoformat()} Exception in user callback function: "+str(ex))
+                    print(f"Exception when posting return value back to user... {ex}")
+                finally:
+                    nextJob["__jobCompleteEvent__"].set()
 
             self._threadCompleatedJob(threadInfo)
             sys.stdout.flush()
@@ -278,6 +287,8 @@ terminate = False
 def myCallback(args):
     print(f"{datetime.datetime.now().isoformat()} CALLBACK CALLED!!" + str(args))
     time.sleep(random.randint(0,10) / 10)
+    if random.randint(0,5) is 0:
+        raise ValueError("Error of type 9876542")
     return random.randint(0, 1000)
 
 ## Will be called by the thread pool when a callback has completed..
