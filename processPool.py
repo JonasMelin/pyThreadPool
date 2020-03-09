@@ -6,7 +6,6 @@ import time
 import datetime
 import random
 import sys
-import processPoolExecutor
 
 #Samples some variables and prints them every nth second.
 PRINT_STATS_INTERVAL = 60
@@ -71,8 +70,6 @@ class processPool():
                 returnedData = self.completedWorkEvent.get()
                 globalWorkId = returnedData[0]
                 threadId     = returnedData[1]
-
-                print(f"GOT SIGNAL THAT WORK IS COMPLETE {globalWorkId}")
 
                 with self.globalLock:
                     indexToDelete = None
@@ -215,7 +212,7 @@ class processPool():
     # ##############################################################
     # Call this function to terminate all resources before de-referncing this object
     # ##############################################################
-    def terminate(self, async=False):
+    def terminate(self, sync=True):
 
         print(f"{datetime.datetime.now().isoformat()} Terminate thread pool")
 
@@ -233,7 +230,7 @@ class processPool():
             for nextJob in self.globalJobList:
                 nextJob["__jobCompleteEvent__"].set()
 
-        if not async:
+        if sync:
             for nextThread in self.threadList:
                 nextThread['threadHandle'].join()
 
