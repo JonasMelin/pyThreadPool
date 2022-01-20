@@ -23,11 +23,12 @@ PRINT_STATS_INTERVAL = 60
 #  execute at the same time, as long as there are enough free threads.
 #
 # Usage example:
-#   tp = threadPool()   # instantiate the threadpool
-#   workList = []       # list of works. add how many you want. Each job will be put on a unique thread, executed in parrallell
+#   tp = threadPool()   # instantiate the processpool
+#   workList = []       # list of works. add how many you want. Each job will be put on a unique process, executed in parrallell
 #   job1 = {}           # Create a job to the work list. Add key words: callback and callbackArgs. Your callback function!
 #   job1["callback"] = myCallback
 #   job1["callbackArgs"] = {"arg1" : counter}
+#   job1["retData"] = None   # data returned from the myCallback function will be returned here
 #   workList.append(job1)    # Append the job. You should append more than one to utalize the pool properly ;-)
 #   tp.runMultiThreadJob(workList)   # run the batch job from your work list.
 #                                    # Note! You can use multiple threads to call runMultiThreadJob simultaneously!
@@ -70,6 +71,7 @@ class processPool():
                 returnedData = self.completedWorkEvent.get()
                 globalWorkId = returnedData[0]
                 threadId     = returnedData[1]
+                retData      = returnedData[2]
 
                 with self.globalLock:
                     indexToDelete = None
@@ -77,6 +79,9 @@ class processPool():
                     for index, nextEntry in enumerate(self.runningJobList):
 
                         if nextEntry["__globalWorkId__"] == globalWorkId:
+                            if "retData" in nextEntry:
+                                nextEntry["retData"] = retData
+
                             nextEntry["__jobCompleteEvent__"].set()
                             indexToDelete = index
                             break
@@ -307,11 +312,12 @@ def _threadDayCare(queue, globalLock, completedWorkEvent, threadId):
             return
 
         try:
-            dataFromPipe["callback"](dataFromPipe["callbackArgs"])
+            retData = None
+            retData = dataFromPipe["callback"](dataFromPipe["callbackArgs"])
         except Exception as ex:
             print(f"{datetime.datetime.now().isoformat()} Exception in user callback function: "+str(ex))
         finally:
-            completedWorkEvent.put([dataFromPipe["globalWorkId"], threadId])
+            completedWorkEvent.put([dataFromPipe["globalWorkId"], threadId, retData])
 
 # ##############################################################
 # Test callback functions
@@ -321,6 +327,7 @@ terminate = False
 def myCallback(args):
     print(f"{datetime.datetime.now().isoformat()} CALLBACK CALLED!!" + str(args))
     time.sleep(random.randint(1,5))
+    return {"retData": random.randint(100, 999)}
 
 
 def threadFunc(args):
@@ -354,12 +361,14 @@ if __name__ == "__main__":
     job = {}
     job["callback"] = myCallback
     job["callbackArgs"] = {"arg1" : 3}
+    job["retData"] = None
     workList.append(job)
     job = {}
     job["callback"] = myCallback
     job["callbackArgs"] = {"arg1" : 4}
+    job["retData"] = None
     workList.append(job)
-    retval = tp.runMultiThreadJob(workList,1)
+    retval = tp.runMultiThreadJob(workList,True)
     terminate = True
     tp.terminate()
 
